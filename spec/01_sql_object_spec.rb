@@ -66,7 +66,7 @@ describe SQLObject do
       expect(c.attributes[:name]).to eq 'Nick Diaz'
     end
   end
-
+  #
   describe '#initialize' do
     it '#initialize properly sets values' do
       c = Cat.new(name: 'Don Frye', id: 100, owner_id: 4)
