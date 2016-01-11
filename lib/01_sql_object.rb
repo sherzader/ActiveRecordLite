@@ -6,24 +6,26 @@ require 'active_support/inflector'
 class SQLObject
   def self.columns
     return @columns if @columns
-    cols = DBConnection.execute2(<<-SQL)
+    cols = DBConnection.execute2(<<-SQL).first
       SELECT
         *
       FROM
         #{self.table_name}
+      LIMIT
+        0
     SQL
-    # rest of cols is hash of column data
     cols.map!(&:to_sym)
+    @columns = cols
   end
 
   def self.finalize!
-    self.columns.each do |column|
-      define_method(column) do
-        self.attributes[column]
+    self.columns.each do |name|
+      define_method(name) do
+        self.attributes[name]
       end
 
-      define_method("#{column}=") do |value|
-        self.attributes[column] = value
+      define_method("#{name}=") do |value|
+        self.attributes[name] = value
       end
     end
   end
@@ -33,53 +35,47 @@ class SQLObject
   end
 
   def self.table_name
-    @table_name ||= self.name.tableize #class name
+    @table_name || self.name.underscore.pluralize
   end
-# ::all return an array of all records in DB
+
   def self.all
-    records = DBConnection.execute2(<<-SQL)
-      SELECT * FROM #{@table_name}
+    results = DBConnection.execute(<<-SQL)
+      SELECT
+        #{table_name}.*
+      FROM
+        #{table_name}
     SQL
-    records.drop(1).map { |e| self.new(e)  }
+
+    parse_all(results)
   end
 
   def self.parse_all(results)
-    results.map do |record|
-      # {:name=>"cat1", :owner_id=>1}
-      self.new(record)
-    end
+    results.map { |result| self.new(result) }
   end
-#::find look up a record by primary key
-  def self.find(id)
 
+  def self.find(id)
+    results = DBConnection.execute(<<-SQL, id)
+      SELECT
+        #{table_name}.*
+      FROM
+        #{table_name}
+      WHERE
+        #{table_name}.id = ?
+    SQL
+
+    parse_all(results).first
   end
 
   def initialize(params = {})
-    attributes
-    params.each do |k, v|
-      unless self.class.columns.include? k.to_sym
-        raise "unknown attribute '#{k}'"
-      end
-      @attributes[k.to_sym] = v
-      self.class.send(:define_method, k) do
-        instance_variable_get(:"@#{k}")
-      end
-      self.class.send(:define_method, "#{k}=") do |v|
-        instance_variable_set(:"@#{k}", v)
+    params.each do |attr_name, value|
+      # make sure to convert keys to symbols
+      attr_name = attr_name.to_sym
+      if self.class.columns.include?(attr_name)
+        self.send("#{attr_name}=", value)
+      else
+        raise "unknown attribute '#{attr_name}'"
       end
     end
-    # attributes
-    # attribute_values
-    # params.each do |k,v|
-    #   @attributes << k
-    #   # define_method(k.to_s) do
-    #     instance_variable_get("@#{k}")
-    #   # end
-    #   @attribute_values << v
-    #   # define_method("#{k}=") do |v|
-    #     instance_variable_set("@#{k}", v)
-    #   # end
-    # end
   end
 
   def attributes
@@ -87,25 +83,40 @@ class SQLObject
   end
 
   def attribute_values
-    self.class.columns.map { |e| send(e) }
+    self.class.columns.map { |attr| self.send(attr) }
   end
-# #insert a new row into the table
+
   def insert
-    # col_names = self.class.columns.first.join(",")
-    # question_marks = (["?"] * col_names.length).join(",")
-    # DBConnection.execute2(<<-SQL, col_names, *attribute_values)
-    #   INSERT INTO
-    #     #{@table_name} #{col_names}
-    #   VALUES
-    #     ?
-    # SQL
+    # drop 1 to avoid inserting id (the first column)
+    columns = self.class.columns.drop(1)
+    col_names = columns.map(&:to_s).join(", ")
+    question_marks = (["?"] * columns.count).join(", ")
+
+    DBConnection.execute(<<-SQL, *attribute_values.drop(1))
+      INSERT INTO
+        #{self.class.table_name} (#{col_names})
+      VALUES
+        (#{question_marks})
+    SQL
+
+    self.id = DBConnection.last_insert_row_id
   end
-# #update the row with the id of this SQLObject
+
   def update
+    set_line = self.class.columns
+      .map { |attr| "#{attr} = ?" }.join(", ")
+
+    DBConnection.execute(<<-SQL, *attribute_values, id)
+      UPDATE
+        #{self.class.table_name}
+      SET
+        #{set_line}
+      WHERE
+        #{self.class.table_name}.id = ?
+    SQL
   end
-# #save calls insert/update depending on whether SQLObject exists
-# a convenience method
+
   def save
-    # ...
+    id.nil? ? insert : update
   end
 end
