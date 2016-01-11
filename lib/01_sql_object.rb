@@ -1,7 +1,5 @@
 require_relative 'db_connection'
 require 'active_support/inflector'
-# NB: the attr_accessor we wrote in phase 0 is NOT used in the rest
-# of this project. It was only a warm up.
 
 class SQLObject
   def self.columns
@@ -35,7 +33,7 @@ class SQLObject
   end
 
   def self.table_name
-    @table_name || self.name.underscore.pluralize
+    @table_name || self.name.tableize
   end
 
   def self.all
@@ -87,7 +85,7 @@ class SQLObject
   end
 
   def insert
-    # drop 1 to avoid inserting id (the first column)
+    # drop 1 to avoid inserting primary key id
     columns = self.class.columns.drop(1)
     col_names = columns.map(&:to_s).join(", ")
     question_marks = (["?"] * columns.count).join(", ")
