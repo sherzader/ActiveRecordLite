@@ -66,7 +66,6 @@ class SQLObject
 
   def initialize(params = {})
     params.each do |attr_name, value|
-      # make sure to convert keys to symbols
       attr_name = attr_name.to_sym
       if self.class.columns.include?(attr_name)
         self.send("#{attr_name}=", value)
