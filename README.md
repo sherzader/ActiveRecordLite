@@ -1,8 +1,6 @@
-# ActiveRecord Lite
+## Object Relational Mapping
 
-## Object Relational Mapper
-
-My implementation of an ORM using a SQLite3 database. Built using TDD via RSpec.
+My implementation of an ORM using a SQLite3 database.
 
 ## How to Use
 * Download zip, run `bundle install`
